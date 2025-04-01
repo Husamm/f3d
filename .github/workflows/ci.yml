@@ -20,6 +20,7 @@ jobs:
 #----------------------------------------------------------------------------
   default_versions:
     runs-on: ubuntu-22.04
+    container: ghcr.io/f3d-app/f3d-ci
     name: Set default versions
     outputs:
       alembic_version: ${{ steps.set_default_versions.outputs.alembic_version }}
@@ -34,6 +35,8 @@ jobs:
       openexr_min_version: ${{ steps.set_default_versions.outputs.openexr_min_version }}
       openvdb_version: ${{ steps.set_default_versions.outputs.openvdb_version }}
       openvdb_min_version: ${{ steps.set_default_versions.outputs.openvdb_min_version }}
+      pdal_version: ${{ steps.set_default_versions.outputs.pdal_version }}
+      pdal_min_version: ${{ steps.set_default_versions.outputs.pdal_min_version }}
       pybind11_version: ${{ steps.set_default_versions.outputs.pybind11_version }}
       pybind11_min_version: ${{ steps.set_default_versions.outputs.pybind11_min_version }}
       python_version: ${{ steps.set_default_versions.outputs.python_version }}
@@ -42,6 +45,8 @@ jobs:
       usd_min_version: ${{ steps.set_default_versions.outputs.usd_min_version }}
       java_version: ${{ steps.set_default_versions.outputs.java_version }}
       java_min_version: ${{ steps.set_default_versions.outputs.java_min_version }}
+      vtk_commit_sha: ${{ steps.set_default_versions.outputs.vtk_commit_sha }}
+      timestamp: ${{ steps.set_default_versions.outputs.timestamp }}
 
     steps:
 
@@ -54,7 +59,9 @@ jobs:
 
     - name: Set default versions
       id: set_default_versions
-      uses: ./source/.github/actions/default-versions
+      uses: f3d-app/default-versions-action@main
+      with:
+        file: ./source/.github/workflows/versions.json
 
 #----------------------------------------------------------------------------
 # Cache LFS: Checkout LFS data and update the cache to limit LFS bandwidth
@@ -100,6 +107,7 @@ jobs:
           - occt_version: ${{needs.default_versions.outputs.occt_version}}
           - openexr_version: ${{needs.default_versions.outputs.openexr_version}}
           - openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+          - pdal_version: ${{needs.default_versions.outputs.pdal_version}}
           - pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
           - usd_version: ${{needs.default_versions.outputs.usd_version}}
           - build_type: mindeps
@@ -111,6 +119,7 @@ jobs:
             occt_version: ${{needs.default_versions.outputs.occt_min_version}}
             openexr_version: ${{needs.default_versions.outputs.openexr_min_version}}
             openvdb_version: ${{needs.default_versions.outputs.openvdb_min_version}}
+            pdal_version: ${{needs.default_versions.outputs.pdal_min_version}}
             pybind11_version: ${{needs.default_versions.outputs.pybind11_min_version}}
             usd_version: ${{needs.default_versions.outputs.usd_min_version}}
 
@@ -136,6 +145,7 @@ jobs:
         occt_version: ${{matrix.occt_version}}
         openexr_version: ${{matrix.openexr_version}}
         openvdb_version: ${{matrix.openvdb_version}}
+        pdal_version: ${{matrix.pdal_version}}
         pybind11_version: ${{matrix.pybind11_version}}
         usd_version: ${{matrix.usd_version}}
 
@@ -149,10 +159,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vtk_version: [commit, v9.4.1, v9.3.1, v9.2.6]
+        vtk_version: ["${{needs.default_versions.outputs.vtk_commit_sha}}", v9.4.1, v9.3.1, v9.2.6]
         static_label: [no-static]
         include:
-          - vtk_version: commit
+          - vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
             static_label: static
 
     runs-on: windows-latest
@@ -178,6 +188,7 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}
         pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
         python_version: ${{needs.default_versions.outputs.python_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
@@ -193,7 +204,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vtk_version: [commit, v9.4.1, v9.3.1, v9.2.6]
+        vtk_version: ["${{needs.default_versions.outputs.vtk_commit_sha}}", v9.4.1, v9.3.1, v9.2.6]
         build_type: [standard]
         include:
           - raytracing_label: raytracing
@@ -207,12 +218,13 @@ jobs:
           - occt_version: ${{needs.default_versions.outputs.occt_version}}
           - openexr_version: ${{needs.default_versions.outputs.openexr_version}}
           - openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+          - pdal_version: ${{needs.default_versions.outputs.pdal_version}}	  
           - pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
           - python_version: ${{needs.default_versions.outputs.python_version}}
           - usd_version: ${{needs.default_versions.outputs.usd_version}}
           - java_version: ${{needs.default_versions.outputs.java_version}}
           - build_type: egl
-            vtk_version: commit
+            vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
             raytracing_label: raytracing
             optional_deps_label: optional-deps
             exclude_deprecated_label: no-exclude-deprecated
@@ -224,12 +236,13 @@ jobs:
             occt_version: ${{needs.default_versions.outputs.occt_version}}
             openexr_version: ${{needs.default_versions.outputs.openexr_version}}
             openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+            pdal_version: ${{needs.default_versions.outputs.pdal_version}}
             pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
             python_version: ${{needs.default_versions.outputs.python_version}}
             usd_version: ${{needs.default_versions.outputs.usd_version}}
             java_version: ${{needs.default_versions.outputs.java_version}}
           - build_type: osmesa
-            vtk_version: commit
+            vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
             raytracing_label: raytracing
             optional_deps_label: optional-deps
             exclude_deprecated_label: no-exclude-deprecated
@@ -241,12 +254,13 @@ jobs:
             occt_version: ${{needs.default_versions.outputs.occt_version}}
             openexr_version: ${{needs.default_versions.outputs.openexr_version}}
             openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+            pdal_version: ${{needs.default_versions.outputs.pdal_version}}
             pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
             python_version: ${{needs.default_versions.outputs.python_version}}
             usd_version: ${{needs.default_versions.outputs.usd_version}}
             java_version: ${{needs.default_versions.outputs.java_version}}
           - build_type: exclude_deprecated
-            vtk_version: commit
+            vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
             raytracing_label: raytracing
             optional_deps_label: optional-deps
             exclude_deprecated_label: exclude-deprecated
@@ -258,19 +272,20 @@ jobs:
             occt_version: ${{needs.default_versions.outputs.occt_version}}
             openexr_version: ${{needs.default_versions.outputs.openexr_version}}
             openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+            pdal_version: ${{needs.default_versions.outputs.pdal_version}}	    
             pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
             python_version: ${{needs.default_versions.outputs.python_version}}
             usd_version: ${{needs.default_versions.outputs.usd_version}}
             java_version: ${{needs.default_versions.outputs.java_version}}
           - build_type: no_optional_deps
-            vtk_version: commit
+            vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
             raytracing_label: no-raytracing
             optional_deps_label: no-optional-deps
             exclude_deprecated_label: no-exclude-deprecated
             rendering_backend: auto
             static_label: no-static
           - build_type: static_libs
-            vtk_version: commit
+            vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
             raytracing_label: no-raytracing
             optional_deps_label: optional-deps
             exclude_deprecated_label: no-exclude-deprecated
@@ -282,12 +297,13 @@ jobs:
             occt_version: ${{needs.default_versions.outputs.occt_version}}
             openexr_version: ${{needs.default_versions.outputs.openexr_version}}
             openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+            pdal_version: ${{needs.default_versions.outputs.pdal_version}}
             pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
             python_version: ${{needs.default_versions.outputs.python_version}}
             usd_version: ${{needs.default_versions.outputs.usd_version}}
             java_version: ${{needs.default_versions.outputs.java_version}}
           - build_type: mindeps
-            vtk_version: commit
+            vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
             raytracing_label: raytracing
             optional_deps_label: optional-deps
             exclude_deprecated_label: no-exclude-deprecated
@@ -299,6 +315,7 @@ jobs:
             occt_version: ${{needs.default_versions.outputs.occt_min_version}}
             openexr_version: ${{needs.default_versions.outputs.openexr_min_version}}
             openvdb_version: ${{needs.default_versions.outputs.openvdb_min_version}}
+            pdal_version: ${{needs.default_versions.outputs.pdal_min_version}}	    
             pybind11_version: ${{needs.default_versions.outputs.pybind11_min_version}}
             python_version: ${{needs.default_versions.outputs.python_min_version}}
             usd_version: ${{needs.default_versions.outputs.usd_min_version}}
@@ -335,6 +352,7 @@ jobs:
         occt_version: ${{matrix.occt_version}}
         openexr_version: ${{matrix.openexr_version}}
         openvdb_version: ${{matrix.openvdb_version}}
+        pdal_version: ${{matrix.pdal_version}}
         pybind11_version: ${{matrix.pybind11_version}}
         python_version: ${{matrix.python_version}}
         usd_version: ${{matrix.usd_version}}
@@ -349,7 +367,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vtk_version: [commit, v9.4.1, v9.3.1, v9.2.6]
+        vtk_version: ["${{needs.default_versions.outputs.vtk_commit_sha}}", v9.4.1, v9.3.1, v9.2.6]
 
     runs-on: macos-13
 
@@ -374,6 +392,7 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}
         pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
         python_version: ${{needs.default_versions.outputs.python_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
@@ -388,14 +407,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vtk_version: [commit, v9.4.1, v9.3.1] # VTK 9.2.6 not compatible with recent clang version on macOS
+        vtk_version: ["${{needs.default_versions.outputs.vtk_commit_sha}}", v9.4.1, v9.3.1] # VTK 9.2.6 not compatible with recent clang version on macOS
         bundle_label: [no-bundle]
         static_label: [no-static]
         include:
-          - vtk_version: commit
+          - vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
             bundle_label: bundle
             static_label: no-static
-          - vtk_version: commit
+          - vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
             bundle_label: no-bundle
             static_label: static
 
@@ -424,6 +443,7 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}	
         pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
         python_version: ${{needs.default_versions.outputs.python_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
@@ -478,8 +498,10 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}	
         pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
+        vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
 
 #----------------------------------------------------------------------------
 # Coverage: Build and test on linux with last VTK with coverage option
@@ -516,7 +538,9 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}	
         usd_version: ${{needs.default_versions.outputs.usd_version}}
+        vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
 
 #----------------------------------------------------------------------------
 # Sanitizer: Build and test on linux with last VTK with sanitizer options
@@ -561,6 +585,7 @@ jobs:
         draco_version: ${{needs.default_versions.outputs.draco_version}}
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
+        vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
 
 #----------------------------------------------------------------------------
 # static-analysis: Run static analysis on linux
@@ -598,13 +623,15 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
+        vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
 
 #----------------------------------------------------------------------------
 # external-build: Check build of F3D as sub-project
 #----------------------------------------------------------------------------
   external-build:
-    needs: cache_dependencies
+    needs: [cache_dependencies, default_versions]
     if: github.event.pull_request.draft == false
 
     strategy:
@@ -624,12 +651,15 @@ jobs:
 
     - name: External build CI
       uses: ./source/f3d/.github/actions/external-build-ci
+      with:
+        vtk_version: ${{needs.default_versions.outputs.vtk_commit_sha}}
 
 #----------------------------------------------------------------------------
 # android: Check build of F3D for android
 #----------------------------------------------------------------------------
   android:
     if: github.event.pull_request.draft == false
+    needs: default_versions
 
     strategy:
       fail-fast: false
@@ -637,7 +667,7 @@ jobs:
         arch: [armeabi-v7a, arm64-v8a, x86, x86_64]
 
     runs-on: ubuntu-22.04
-    container: ghcr.io/f3d-app/f3d-ci
+    container: ghcr.io/f3d-app/f3d-android-${{ matrix.arch }}:${{needs.default_versions.outputs.timestamp}}
 
     steps:
 
@@ -652,3 +682,70 @@ jobs:
       uses: ./source/.github/actions/android-ci
       with:
         arch: ${{matrix.arch}}
+
+#----------------------------------------------------------------------------
+# webassembly: Build webassembly artifacts
+#----------------------------------------------------------------------------
+  webassembly:
+    if: github.event.pull_request.draft == false
+    needs: default_versions
+
+    strategy:
+      fail-fast: false
+
+    runs-on: ubuntu-22.04
+    container: ghcr.io/f3d-app/f3d-wasm:${{needs.default_versions.outputs.timestamp}}
+
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        path: 'source'
+        fetch-depth: 0
+        lfs: 'true'
+
+    - name: WebAssembly CI
+      uses: ./source/.github/actions/wasm-ci
+
+#----------------------------------------------------------------------------
+# generate website
+#----------------------------------------------------------------------------
+  generate-website:
+    needs: webassembly
+    name: Generate Website
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Build Jekyll
+      uses: actions/jekyll-build-pages@v1
+
+    - name: Install doxygen and build doxygen doc
+      working-directory: ${{github.workspace}}
+      run: |
+        pip install "sphinx==5.3.0" "pydata-sphinx-theme==0.13.1" sphinx-book-theme exhale
+        sudo apt install doxygen
+        sphinx-build -M html ./library/doxygen ./library/doxygen/build/
+        sudo mv library/doxygen/build/html _site/doc/libf3d/doxygen
+        sphinx-build -M html ./vtkext/public/doxygen ./vtkext/public/doxygen/build/
+        sudo mv vtkext/public/doxygen/build/html _site/doc/libf3d/vtkext_doxygen
+
+    - name: Retrieve web assembly binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: f3d-wasm
+        path: ./web
+
+    - name: Copy web assembly binaries
+      run: sudo mv web _site/
+
+    - name: Deploy
+      if: github.ref == 'refs/heads/master'
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+        folder: _site
+        token: ${{ secrets.GITHUB_TOKEN }}
+        clean: true

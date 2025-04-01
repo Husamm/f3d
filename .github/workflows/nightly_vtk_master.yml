@@ -54,6 +54,8 @@ jobs:
       openexr_min_version: ${{ steps.set_default_versions.outputs.openexr_min_version }}
       openvdb_version: ${{ steps.set_default_versions.outputs.openvdb_version }}
       openvdb_min_version: ${{ steps.set_default_versions.outputs.openvdb_min_version }}
+      pdal_version: ${{ steps.set_default_versions.outputs.pdal_version }}
+      pdal_min_version: ${{ steps.set_default_versions.outputs.pdal_min_version }}
       pybind11_version: ${{ steps.set_default_versions.outputs.pybind11_version }}
       pybind11_min_version: ${{ steps.set_default_versions.outputs.pybind11_min_version }}
       python_version: ${{ steps.set_default_versions.outputs.python_version }}
@@ -62,6 +64,7 @@ jobs:
       usd_min_version: ${{ steps.set_default_versions.outputs.usd_min_version }}
       java_version: ${{ steps.set_default_versions.outputs.java_version }}
       java_min_version: ${{ steps.set_default_versions.outputs.java_min_version }}
+      timestamp: ${{ steps.set_default_versions.outputs.timestamp }}
 
     steps:
 
@@ -74,7 +77,9 @@ jobs:
 
     - name: Set default versions
       id: set_default_versions
-      uses: ./source/.github/actions/default-versions
+      uses: f3d-app/default-versions-action@main
+      with:
+        file: ./source/.github/workflows/versions.json
 
 #----------------------------------------------------------------------------
 # Cache LFS: Checkout LFS data and update the cache to limit LFS bandwidth
@@ -133,6 +138,7 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}
         pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
         python_version: ${{needs.default_versions.outputs.python_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
@@ -182,6 +188,7 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}
         pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
         python_version: ${{needs.default_versions.outputs.python_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
@@ -218,6 +225,7 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}
         pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
         python_version: ${{needs.default_versions.outputs.python_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
@@ -254,6 +262,7 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}
         pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
         python_version: ${{needs.default_versions.outputs.python_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
@@ -304,62 +313,8 @@ jobs:
         occt_version: ${{needs.default_versions.outputs.occt_version}}
         openexr_version: ${{needs.default_versions.outputs.openexr_version}}
         openvdb_version: ${{needs.default_versions.outputs.openvdb_version}}
+        pdal_version: ${{needs.default_versions.outputs.pdal_version}}
         pybind11_version: ${{needs.default_versions.outputs.pybind11_version}}
         python_version: ${{needs.default_versions.outputs.python_version}}
         usd_version: ${{needs.default_versions.outputs.usd_version}}
         java_version: ${{needs.default_versions.outputs.java_version}}
-
-#----------------------------------------------------------------------------
-# android: Check build of F3D for android
-#----------------------------------------------------------------------------
-  android:
-    needs: check_nightly
-    if: ${{ needs.check_nightly.outputs.should_run == 'true' }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [armeabi-v7a, arm64-v8a, x86, x86_64]
-
-    runs-on: ubuntu-22.04
-    container: ghcr.io/f3d-app/f3d-ci
-
-    steps:
-
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        path: 'source'
-        fetch-depth: 0
-        lfs: false
-
-    - name: Android CI
-      uses: ./source/.github/actions/android-ci
-      with:
-        arch: ${{matrix.arch}}
-        vtk_version: ${{needs.check_nightly.outputs.vtk_sha}}
-
-#----------------------------------------------------------------------------
-# webassembly: Check build of F3D for webassembly
-#----------------------------------------------------------------------------
-  webassembly:
-    needs: check_nightly
-    if: ${{ needs.check_nightly.outputs.should_run == 'true' }}
-
-    strategy:
-      fail-fast: false
-
-    runs-on: ubuntu-22.04
-
-    steps:
-
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        path: 'source'
-        fetch-depth: 0
-        lfs: 'false'
-
-    - name: Build
-      working-directory: ${{github.workspace}}/source/webassembly
-      run: npm run build:rel

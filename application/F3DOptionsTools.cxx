@@ -84,7 +84,7 @@ static inline const std::array<CLIGroup, 8> CLIOptions = {{
       { "loading-progress", "", "Show loading progress bar", "<bool>", "1" },
       { "animation-progress", "", "Show animation progress bar", "<bool>", "1" },
       { "multi-file-mode", "", R"(Choose the behavior when opening multiple files. "single" will show one file at a time, "all" will show all files in a single scene.)", "<single|all>", "" },
-      { "up", "", "Up direction", "{-X, +X, -Y, +Y, -Z, +Z}", "" },
+      { "up", "", "Up direction", "<direction>", "" },
       { "axis", "x", "Show axes", "<bool>", "1" }, { "grid", "g", "Show grid", "<bool>", "1" },
       { "grid-absolute", "", "Position grid at the absolute origin instead of below the model", "<bool>", "1" },
       { "grid-unit", "", "Size of grid unit square, automatically computed by default", "<value>", "" },
@@ -97,7 +97,7 @@ static inline const std::array<CLIGroup, 8> CLIOptions = {{
       { "invert-zoom", "", "Invert zoom direction with right mouse click", "<bool>", "1" },
       { "animation-autoplay", "", "Automatically start animation", "<bool>", "1" },
       { "animation-index", "", "Select animation to show", "<index>", "" },
-      { "animation-speed-factor", "", "Set animation speed factor", "<factor>", "" },
+      { "animation-speed-factor", "", "Set animation speed factor", "<ratio>", "" },
       { "animation-time", "", "Set animation time to load", "<time>", "" },
       { "font-file", "", "Path to a FreeType compatible font file", "<file_path>", ""},
       { "font-scale", "", "Scale fonts", "<ratio>", ""},
@@ -147,9 +147,9 @@ static inline const std::array<CLIGroup, 8> CLIOptions = {{
   {"Camera",
     { {"camera-position", "", "Camera position (overrides camera direction and camera zoom factor if any)", "<X,Y,Z>", ""},
       {"camera-focal-point", "", "Camera focal point", "<X,Y,Z>", ""},
-      {"camera-view-up", "", "Camera view up", "<X,Y,Z>", ""},
+      {"camera-view-up", "", "Camera view up", "<direction>", ""},
       {"camera-view-angle", "", "Camera view angle (non-zero, in degrees)", "<angle>", ""},
-      {"camera-direction", "", "Camera direction", "<X,Y,Z>", ""},
+      {"camera-direction", "", "Camera direction", "<direction>", ""},
       {"camera-zoom-factor", "", "Camera zoom factor (non-zero)", "<factor>", ""},
       {"camera-azimuth-angle", "", "Camera azimuth angle (in degrees), performed after other camera options", "<angle>", ""},
       {"camera-elevation-angle", "", "Camera elevation angle (in degrees), performed after other camera options", "<angle>", ""},
@@ -176,9 +176,10 @@ static inline const std::array<CLIGroup, 8> CLIOptions = {{
 
 /**
  * True boolean options need to be filtered out in ParseCLIOptions
+ * Also filter out special options like `define` and `reset`
  * This is the easiest, compile time way to do it
  */
-constexpr std::array CLIBooleans = {"version", "help", "list-readers", "scan-plugins", "list-rendering-backends"};
+constexpr std::array CLIBooleans = {"version", "help", "list-readers", "scan-plugins", "list-rendering-backends", "define", "reset"};
 
 //----------------------------------------------------------------------------
 /**
@@ -358,7 +359,7 @@ void PrintReadersList()
 }
 
 //----------------------------------------------------------------------------
-std::pair<std::string, int> F3DOptionsTools::GetClosestOption(const std::string& option, bool checkLib)
+std::pair<std::string, int> F3DOptionsTools::GetClosestOption(const std::string& option, bool checkLibAndReaders)
 {
   std::pair<std::string, int> ret = { "", std::numeric_limits<int>::max() };
   auto checkDistance = [](const std::string& key, const std::string& name, std::pair<std::string, int>& ref) {
@@ -390,10 +391,15 @@ std::pair<std::string, int> F3DOptionsTools::GetClosestOption(const std::string&
     checkDistance(std::string(key), option, ret);
   }
 
-  // Check libf3d option names
-  if (checkLib)
+  // Check libf3d and reader option names
+  if (checkLibAndReaders)
   {
     for (const std::string& key : f3d::options::getAllNames())
+    {
+      checkDistance(key, option, ret);
+    }
+
+    for (const std::string& key : f3d::engine::getAllReaderOptionNames())
     {
       checkDistance(key, option, ret);
     }
@@ -410,6 +416,13 @@ F3DOptionsTools::OptionsDict F3DOptionsTools::ParseCLIOptions(
   // cxxopts values need to live somewhere until parsing is done
   std::vector<std::shared_ptr<cxxopts::Value>> cxxoptsValues;
   auto cxxoptsInputPositionals = cxxopts::value<std::vector<std::string>>(positionals);
+
+  std::vector<std::string> defines;
+  auto cxxoptsDefines = cxxopts::value<std::vector<std::string>>(defines);
+
+  std::vector<std::string> resets;
+  auto cxxoptsResets = cxxopts::value<std::vector<std::string>>(resets);
+
   try
   {
     cxxopts::Options cxxOptions(execName, F3D::AppTitle);
@@ -423,6 +436,8 @@ F3DOptionsTools::OptionsDict F3DOptionsTools::ParseCLIOptions(
       if (std::string(optionGroup.GroupName) == "Applicative")
       {
         group("input", "Input files", cxxoptsInputPositionals, "<files>");
+        group("D,define", "Define libf3d options", cxxoptsDefines, "libf3d.option=value");
+        group("R,reset", "Reset libf3d options", cxxoptsResets, "libf3d.option");
       }
 
       // Add each option to cxxopts
@@ -560,9 +575,28 @@ F3DOptionsTools::OptionsDict F3DOptionsTools::ParseCLIOptions(
       // Discard boolean option like `--version` or `--help`
       if (std::find(::CLIBooleans.begin(), ::CLIBooleans.end(), res.key()) == ::CLIBooleans.end())
       {
-        cliOptionsDict.emplace(res.key(), res.value());
+        cliOptionsDict[res.key()] = res.value();
       }
     }
+
+    // Handle defines and add them as proper options
+    for (const std::string& define : defines)
+    {
+      std::string::size_type sepIdx = define.find_first_of('=');
+      if (sepIdx == std::string::npos)
+      {
+        f3d::log::warn("Could not parse a define '", define, "'");
+        continue;
+      }
+      cliOptionsDict[define.substr(0, sepIdx)] = define.substr(sepIdx + 1);
+    }
+
+    // Handles reset using the dedicated syntax
+    for (const std::string& reset : resets)
+    {
+      cliOptionsDict["reset-" + reset] = "";
+    }
+
     return cliOptionsDict;
   }
   catch (const cxxopts::exceptions::exception& ex)

@@ -4,7 +4,10 @@
 #include <options.h>
 #include <types.h>
 
+#include <filesystem>
 #include <iostream>
+
+namespace fs = std::filesystem;
 
 class ParsingTest : public PseudoUnitTest
 {
@@ -90,15 +93,19 @@ int TestSDKOptionsIO(int argc, char* argv[])
   test.format<std::string>("std::string", "foobar", "foobar");
   test.format<std::string>("std::string", "  foobar  ", "  foobar  ");
 
-  test.parse<f3d::ratio_t>("ratio_t", "0.1234", 0.1234);
-  test.parse<f3d::ratio_t>("ratio_t", "12.34%", 0.1234);
-  test.parse<f3d::ratio_t>("ratio_t", "1/2", 0.5);
-  test.parse<f3d::ratio_t>("ratio_t", "1:2", 0.5);
-  test.parse<f3d::ratio_t>("ratio_t", "-2/-3.5", 2.0 / 3.5);
+  test.parse<fs::path>("fs::path", "/path/to/file.ext", "/path/to/file.ext");
+  test.parse<fs::path>("fs::path", "/path/not/valid/../../to/file.ext", "/path/to/file.ext");
+  test.format<fs::path>("fs::path", "/path/to/file.ext", "/path/to/file.ext");
+
+  test.parse<f3d::ratio_t>("ratio_t", "0.1234", f3d::ratio_t(0.1234));
+  test.parse<f3d::ratio_t>("ratio_t", "12.34%", f3d::ratio_t(0.1234));
+  test.parse<f3d::ratio_t>("ratio_t", "1/2", f3d::ratio_t(0.5));
+  test.parse<f3d::ratio_t>("ratio_t", "1:2", f3d::ratio_t(0.5));
+  test.parse<f3d::ratio_t>("ratio_t", "-2/-3.5", f3d::ratio_t(2.0 / 3.5));
   test.parse_expect<f3d::ratio_t, parsing_exception>("invalid ratio_t", "12.34&");
   test.parse_expect<f3d::ratio_t, parsing_exception>("invalid ratio_t", "1/2/3");
   test.parse_expect<f3d::ratio_t, parsing_exception>("out of range ratio_t", outOfRangeDoubleStr);
-  test.format<f3d::ratio_t>("ratio_t", .1234, "0.1234");
+  test.format<f3d::ratio_t>("ratio_t", f3d::ratio_t(.1234), "0.1234");
 
   test.parse<std::vector<int>>("std::vector<int>", "1, 2, 3", { 1, 2, 3 });
   test.parse<std::vector<int>>("std::vector<int>", "1,2,3", { 1, 2, 3 });
@@ -110,7 +117,43 @@ int TestSDKOptionsIO(int argc, char* argv[])
 
   test.parse<f3d::color_t>("color_t", "0.1,0.2,0.3", { 0.1, 0.2, 0.3 });
   test.parse<f3d::color_t>("color_t", "  0.1,  0.2 , 0.3 ", { 0.1, 0.2, 0.3 });
+  test.parse_expect<f3d::color_t, parsing_exception>("incorrect size color_t", "0.1,0.2,0.3,0.4");
   test.format<f3d::color_t>("color_t", { 0.1, 0.2, 0.3 }, "0.1,0.2,0.3");
+
+  test.parse<f3d::direction_t>("direction_t", "+X", { 1, 0, 0 });
+  test.parse<f3d::direction_t>("direction_t", "-Y", { 0, -1, 0 });
+  test.parse<f3d::direction_t>("direction_t", "+Z", { 0, 0, 1 });
+  test.parse<f3d::direction_t>("direction_t", "+xZ", { 1, 0, 1 });
+  test.parse<f3d::direction_t>("direction_t", "-XZ", { -1, 0, -1 });
+  test.parse<f3d::direction_t>("direction_t", "-X+Z", { -1, 0, 1 });
+  test.parse<f3d::direction_t>("direction_t", "-Xy+Z", { -1, -1, +1 });
+  test.parse<f3d::direction_t>("direction_t", "-x+Y-Z", { -1, +1, -1 });
+  test.parse_expect<f3d::direction_t, parsing_exception>("invalid direction_t", "-K");
+  test.parse_expect<f3d::direction_t, parsing_exception>("invalid direction_t", "-y+zx");
+  test.parse_expect<f3d::direction_t, parsing_exception>("invalid direction_t", "-x++yz");
+  test.parse<f3d::direction_t>("direction_t", "0.1,0.2,0.3", { 0.1, 0.2, 0.3 });
+  test.parse<f3d::direction_t>("direction_t", "  0.1,  0.2 , 0.3 ", { 0.1, 0.2, 0.3 });
+  test.parse_expect<f3d::color_t, parsing_exception>(
+    "incorrect size direction_t", "0.1,0.2,0.3,0.4");
+  test.format<f3d::direction_t>("direction_t", { 0.1, 0.2, 0.3 }, "0.1,0.2,0.3");
+  test.format<f3d::direction_t>("direction_t", { 0, 0, 0 }, "0,0,0");
+  test.format<f3d::direction_t>("direction_t", { +1, 0, 0 }, "+X");
+  test.format<f3d::direction_t>("direction_t", { 0, +2, 0 }, "+Y");
+  test.format<f3d::direction_t>("direction_t", { 0, 0, +3 }, "+Z");
+  test.format<f3d::direction_t>("direction_t", { -1, 0, 0 }, "-X");
+  test.format<f3d::direction_t>("direction_t", { 0, -2, 0 }, "-Y");
+  test.format<f3d::direction_t>("direction_t", { 0, 0, -3 }, "-Z");
+  test.format<f3d::direction_t>("direction_t", { +1, 0, +1 }, "+XZ");
+  test.format<f3d::direction_t>("direction_t", { 0, +2, -2 }, "+Y-Z");
+  test.format<f3d::direction_t>("direction_t", { -0.1, -0.1, +0.1 }, "-XY+Z");
+  test.format<f3d::direction_t>("direction_t", { +0.1, -0.1, +0.2 }, "0.1,-0.1,0.2");
+
+  test.parse<f3d::colormap_t>("colormap_t", "0,0,0,0,1,1,1,1", { 0, 0, 0, 0, 1, 1, 1, 1 });
+  test.parse<f3d::colormap_t>(
+    "colormap_t", "  -0.0,   0,   0   , 0.0,1,1.0  ,1,  1.0 ", { 0, 0, 0, 0, 1, 1, 1, 1 });
+  test.parse_expect<f3d::colormap_t, parsing_exception>(
+    "invalid parsing colormap_t", "zero,0,0,0,one,1,1,1");
+  test.format<f3d::colormap_t>("colormap_t", { 0, 0, 0, 0, 1, 1, 1, 1 }, "0,0,0,0,1,1,1,1");
 
   test.parse<std::vector<std::string>>(
     "std::vector<std::string>", "foo,bar,baz", { "foo", "bar", "baz" });

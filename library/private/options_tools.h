@@ -3,9 +3,15 @@
 
 #include "options.h"
 #include "types.h"
+#include "utils.h"
 
 #include <algorithm>
+#include <cassert>
+#include <filesystem>
+#include <regex>
 #include <sstream>
+
+namespace fs = std::filesystem;
 
 namespace f3d
 {
@@ -159,16 +165,16 @@ ratio_t parse(const std::string& str)
   {
     if (!str.empty() && str.at(str.size() - 1) == '%')
     {
-      return stodStrict(str.substr(0, str.size() - 1)) / 100;
+      return f3d::ratio_t(stodStrict(str.substr(0, str.size() - 1)) / 100);
     }
 
     const std::size_t sep = str.find_first_of(":/");
     if (sep != std::string::npos)
     {
-      return stodStrict(str.substr(0, sep)) / stodStrict(str.substr(sep + 1));
+      return f3d::ratio_t(stodStrict(str.substr(0, sep)) / stodStrict(str.substr(sep + 1)));
     }
 
-    return stodStrict(str);
+    return f3d::ratio_t(stodStrict(str));
   }
   catch (std::invalid_argument const&)
   {
@@ -179,6 +185,16 @@ ratio_t parse(const std::string& str)
     throw options::parsing_exception(
       "Cannot parse " + str + " into a ratio_t as it would go out of range");
   }
+}
+
+//----------------------------------------------------------------------------
+/**
+ * Parse provided string into a fs::path using `utils::collapsePath`
+ */
+template<>
+fs::path parse(const std::string& str)
+{
+  return utils::collapsePath(str);
 }
 
 //----------------------------------------------------------------------------
@@ -203,12 +219,88 @@ color_t parse(const std::string& str)
 
 //----------------------------------------------------------------------------
 /**
+ * Parse provided string into a direction_t.
+ * Supported formats: "X,Y,Z", "[[+|-]X][[+|-]Y][[+|-]Z]" (case insensitive)
+ * rely on parse<std::vector<double>>(str)
+ * Can throw options::parsing_exception in case of failure to parse
+ */
+template<>
+direction_t parse(const std::string& str)
+{
+  try
+  {
+    const std::regex re("([+-]?x)?([+-]?y)?([+-]?z)?", std::regex_constants::icase);
+    std::smatch match;
+    if (std::regex_match(str, match, re))
+    {
+      direction_t dir;
+      int sign = 1;
+      for (size_t i = 0; i < 3; ++i)
+      {
+        const std::string& match_str = match[i + 1].str();
+        if (!match_str.empty())
+        {
+          if (match_str[0] == '-')
+          {
+            sign = -1;
+          }
+          else if (match_str[0] == '+')
+          {
+            sign = +1;
+          }
+          const int index = std::toupper(match_str[match_str.length() - 1]) - 'X';
+          assert(index >= 0 && index < 3);
+          dir[index] = sign;
+        }
+      }
+      return dir;
+    }
+    else
+    {
+      try
+      {
+        return direction_t(options_tools::parse<std::vector<double>>(str));
+      }
+      catch (const options::parsing_exception&)
+      {
+        throw options::parsing_exception("Cannot parse " + str + " into a direction_t");
+      }
+    }
+  }
+  catch (const f3d::type_construction_exception& ex)
+  {
+    throw options::parsing_exception("Cannot parse " + str + " into a direction_t: " + ex.what());
+  }
+}
+
+//----------------------------------------------------------------------------
+/**
  * Return provided string stripped of leading and trailing spaces.
  */
 template<>
 std::string parse(const std::string& str)
 {
   return options_tools::trim(str);
+}
+
+//----------------------------------------------------------------------------
+/**
+ * Parse provided string into a colormap_t.
+ * Supported formats: vector of doubles
+ * Can throw options::parsing_exception in case of failure to parse
+ * TODO add proper parsing
+ */
+template<>
+colormap_t parse(const std::string& str)
+{
+  try
+  {
+    return colormap_t(options_tools::parse<std::vector<double>>(str));
+  }
+  catch (const options::parsing_exception&)
+  {
+    throw options::parsing_exception("Cannot parse " + str + " into a colormap_t");
+  }
 }
 
 // TODO Improve string generation
@@ -267,6 +359,15 @@ std::string format(const std::string& var)
 
 //----------------------------------------------------------------------------
 /**
+ * Generate (returns) a string from provided path
+ */
+std::string format(const fs::path& var)
+{
+  return var.string();
+}
+
+//----------------------------------------------------------------------------
+/**
  * Format provided var into a string from provided double vector
  * rely on format(double&) and add `, ` between the double values
  */
@@ -291,6 +392,70 @@ std::string format(const std::vector<T>& var)
 std::string format(color_t var)
 {
   // TODO generate a proper color string
+  return options_tools::format(static_cast<std::vector<double>>(var));
+}
+
+//----------------------------------------------------------------------------
+/**
+ * Format provided var into a string from provided direction_t.
+ * Format as `+X`/`+X-Y`/... if possible, otherwise rely on `format(std::vector<double>&)`
+ */
+std::string format(direction_t var)
+{
+  const auto isZero = [](double a) { return std::abs(a) < 1e-12; };
+  const auto absDiff = [](double a, double b) { return std::abs(a) - std::abs(b); };
+  const auto formatAsXYZ = [&]()
+  {
+    std::string str = "";
+    double firstNonZero = 0; // not non-zero until first
+    char sign = '\0';        // initially not `+`/`-` to force first sign
+    for (size_t componentIndex = 0; componentIndex < 3; ++componentIndex)
+    {
+      const double componentValue = var[componentIndex];
+      if (!isZero(componentValue))
+      {
+        if (isZero(firstNonZero))
+        {
+          firstNonZero = componentValue;
+        }
+        else if (!isZero(absDiff(componentValue, firstNonZero)))
+        {
+          throw std::invalid_argument("not all same");
+        }
+        const char newSign = componentValue < 0 ? '-' : '+';
+        if (newSign != sign)
+        {
+          str += newSign;
+          sign = newSign;
+        }
+        str += static_cast<char>('X' + componentIndex);
+      }
+    }
+    if (str.empty())
+    {
+      throw std::invalid_argument("all zeroes");
+    }
+    return str;
+  };
+
+  try
+  {
+    return formatAsXYZ();
+  }
+  catch (const std::invalid_argument&)
+  {
+    return options_tools::format(static_cast<std::vector<double>>(var));
+  }
+}
+
+//----------------------------------------------------------------------------
+/**
+ * Format provided var into a string from provided colormap_t.
+ * Rely on `format(std::vector<double>&)`
+ * TODO add proper formatting
+ */
+std::string format(const colormap_t& var)
+{
   return options_tools::format(static_cast<std::vector<double>>(var));
 }
 

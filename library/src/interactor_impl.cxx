@@ -1,6 +1,7 @@
 #include "interactor_impl.h"
 
 #include "animationManager.h"
+#include "engine.h"
 #include "log.h"
 #include "scene_impl.h"
 #include "utils.h"
@@ -37,6 +38,7 @@
 #include <chrono>
 #include <cmath>
 #include <map>
+#include <numeric>
 #include <regex>
 #include <vector>
 
@@ -124,8 +126,6 @@ public:
 
     this->Recorder = vtkSmartPointer<vtkF3DInteractorEventRecorder>::New();
     this->Recorder->SetInteractor(this->VTKInteractor);
-
-    this->Style->ResetTemporaryUp();
   }
 
   //----------------------------------------------------------------------------
@@ -471,7 +471,7 @@ public:
         try
         {
           // XXX: Ignore the boolean return of triggerCommand,
-          //  error is already logged by triggerCommand
+          // error is already logged by triggerCommand
           this->Interactor.triggerCommand(commandWithArgs);
         }
         catch (const f3d::interactor::command_runtime_exception& ex)
@@ -538,7 +538,17 @@ public:
 
     if (this->CommandBuffer.has_value())
     {
-      this->Interactor.triggerCommand(this->CommandBuffer.value());
+      try
+      {
+        // XXX: Ignore the boolean return of triggerCommand,
+        // error is already logged by triggerCommand
+        this->Interactor.triggerCommand(this->CommandBuffer.value());
+      }
+      catch (const f3d::interactor::command_runtime_exception& ex)
+      {
+        log::error("Interaction: error running command: \"" + this->CommandBuffer.value() +
+          "\": " + ex.what());
+      }
       this->CommandBuffer.reset();
     }
 
@@ -574,6 +584,8 @@ public:
   std::map<interaction_bind_t, BindingCommands> Bindings;
   std::multimap<std::string, interaction_bind_t> GroupedBinds;
   std::vector<std::string> OrderedBindGroups;
+
+  std::map<std::string, std::string> AliasMap;
 
   vtkNew<vtkCellPicker> CellPicker;
   vtkNew<vtkPointPicker> PointPicker;
@@ -620,8 +632,8 @@ interactor& interactor_impl::initCommands()
   {
     if (args.size() != expectedSize)
     {
-      throw interactor_impl::invalid_args_exception(std::string("Command: ") +
-        std::string(actionName) + " is expecting " + std::to_string(expectedSize) + " arguments");
+      throw interactor::invalid_args_exception(std::string("Command: ") + std::string(actionName) +
+        " is expecting " + std::to_string(expectedSize) + " arguments");
     }
   };
 
@@ -646,6 +658,7 @@ interactor& interactor_impl::initCommands()
       check_args(args, 1, "reset");
       this->Internals->Options.reset(args[0]);
     });
+
   this->addCommand("clear",
     [&](const std::vector<std::string>& args)
     {
@@ -657,11 +670,19 @@ interactor& interactor_impl::initCommands()
       console->Clear();
 #endif
     });
+
   this->addCommand("print",
     [&](const std::vector<std::string>& args)
     {
       check_args(args, 1, "print");
       log::info(this->Internals->Options.getAsString(args[0]));
+    });
+
+  this->addCommand("set_reader_option",
+    [&](const std::vector<std::string>& args)
+    {
+      check_args(args, 2, "set_reader_option");
+      f3d::engine::setReaderOption(args[0], args[1]);
     });
 
   this->addCommand("cycle_animation",
@@ -694,9 +715,8 @@ interactor& interactor_impl::initCommands()
       }
       else
       {
-        throw interactor_impl::invalid_args_exception(
-          std::string("Command: cycle_coloring arg:\"") + std::string(type) +
-          "\" is not recognized.");
+        throw interactor::invalid_args_exception(std::string("Command: cycle_coloring arg:\"") +
+          std::string(type) + "\" is not recognized.");
       }
       this->Internals->SynchronizeScivisOptions(this->Internals->Options, ren);
       this->Internals->Window.PrintColoringDescription(log::VerboseLevel::DEBUG);
@@ -771,7 +791,7 @@ interactor& interactor_impl::initCommands()
       }
       else
       {
-        throw interactor_impl::invalid_args_exception(
+        throw interactor::invalid_args_exception(
           std::string("Command: set_camera arg:\"") + std::string(type) + "\" is not recognized.");
       }
     });
@@ -801,6 +821,26 @@ interactor& interactor_impl::initCommands()
     {
       this->Internals->AnimationManager->StopAnimation();
       this->Internals->Scene.add(files);
+    });
+
+  this->addCommand("alias",
+    [&](const std::vector<std::string>& args)
+    {
+      if (args.size() < 2)
+      {
+        throw interactor::invalid_args_exception("alias command requires at least 2 arguments");
+      }
+
+      // Validate the alias arguments
+      const std::string& aliasName = args[0];
+      // Combine all remaining arguments into the alias command
+      // Add alias command to the map
+      this->Internals->AliasMap[aliasName] = std::accumulate(args.begin() + 2, args.end(),
+        args[1], // Start with first command argument
+        [](const std::string& a, const std::string& b) { return a + " " + b; });
+
+      log::info(
+        "Alias " + aliasName + " added with command " + this->Internals->AliasMap[aliasName]);
     });
   return *this;
 }
@@ -841,6 +881,14 @@ std::vector<std::string> interactor_impl::getCommandActions() const
 bool interactor_impl::triggerCommand(std::string_view command)
 {
   log::debug("Command: ", command);
+
+  // Resolve Alias Before Tokenizing
+  auto aliasIt = this->Internals->AliasMap.find(std::string(command));
+  if (aliasIt != this->Internals->AliasMap.end())
+  {
+    command = aliasIt->second;
+  }
+
   std::vector<std::string> tokens;
   try
   {
@@ -865,6 +913,7 @@ bool interactor_impl::triggerCommand(std::string_view command)
     if (callbackIt != this->Internals->Commands.end())
     {
       callbackIt->second({ tokens.begin() + 1, tokens.end() });
+      return true;
     }
     else
     {
@@ -892,7 +941,7 @@ bool interactor_impl::triggerCommand(std::string_view command)
     log::error("Command: provided args in command: \"", command,
       "\" cannot be parsed into an option, ignoring");
   }
-  catch (const invalid_args_exception& ex)
+  catch (const interactor::invalid_args_exception& ex)
   {
     log::error(ex.what(), " Ignoring.");
   }
@@ -1320,15 +1369,15 @@ void interactor_impl::UpdateRendererAfterInteraction()
 }
 
 //----------------------------------------------------------------------------
+void interactor_impl::ResetTemporaryUp()
+{
+  this->Internals->Style->ResetTemporaryUp();
+}
+
+//----------------------------------------------------------------------------
 void interactor_impl::SetCommandBuffer(const char* command)
 {
   // XXX This replace previous command buffer, it should be improved
   this->Internals->CommandBuffer = command;
-}
-
-//----------------------------------------------------------------------------
-interactor_impl::invalid_args_exception::invalid_args_exception(const std::string& what)
-  : exception(what)
-{
 }
 }
